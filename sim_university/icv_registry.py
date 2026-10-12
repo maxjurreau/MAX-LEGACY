@@ -5,20 +5,21 @@ from typing import Dict, List, Optional
 import json
 
 from runtime.store import MAXLegacyStore
+from runtime.config import DEFAULT_CONFIG
+from runtime.audit import DEFAULT_AUDIT_TRAIL
 
 
 class ICVRegistry:
-    """Registry for Individual Confidence Values (ICVs) or similar metrics.
+    """Registry for Individual Confidence Values (ICVs).
 
-    ICVs are expected to be attached to knowledge objects under the key "icv".
-    This registry provides a simple index and listing.
+    This registry indexes ICVs that are embedded in knowledge objects under
+    the key "icv". It is intentionally read-only and tolerant of malformed
+    objects.
     """
 
     def __init__(self, root: Optional[Path] = None) -> None:
-        if root is None:
-            root = Path(__file__).resolve().parents[1]
-        self.root = Path(root)
-        self.store = MAXLegacyStore(root=self.root)
+        repo_root = Path(root) if root is not None else DEFAULT_CONFIG.repo_root
+        self.store = MAXLegacyStore(root=repo_root)
         self.knowledge_dir = self.store.knowledge_dir
 
     def list_icvs(self) -> List[str]:
@@ -28,13 +29,13 @@ class ICVRegistry:
                 obj = json.loads(p.read_text(encoding="utf-8"))
                 icv = obj.get("icv")
                 if icv:
-                    # allow icv to be either id or named tag
                     if isinstance(icv, str):
                         icvs.add(icv)
                     elif isinstance(icv, dict) and "id" in icv:
-                        icvs.add(icv["id"])
+                        icvs.add(str(icv["id"]))
             except Exception:
                 continue
+        DEFAULT_AUDIT_TRAIL.record("list_icvs", {"count": len(icvs)})
         return sorted(icvs)
 
     def get_icv_for_object(self, obj_id: str) -> Optional[Dict]:
@@ -45,7 +46,7 @@ class ICVRegistry:
         return obj.get("icv")
 
     def list_icv_objects(self, icv_id: str) -> List[Dict]:
-        results = []
+        results: List[Dict] = []
         for p in self.knowledge_dir.glob("*.json"):
             try:
                 obj = json.loads(p.read_text(encoding="utf-8"))
@@ -56,6 +57,7 @@ class ICVRegistry:
                     results.append(obj)
             except Exception:
                 continue
+        DEFAULT_AUDIT_TRAIL.record("list_icv_objects", {"icv": icv_id, "count": len(results)})
         return results
 
 
