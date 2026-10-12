@@ -1,26 +1,30 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 
+K_PATTERN = re.compile(r"^K-\d{3}$")
+EV_PATTERN = re.compile(r"^EV-\d{4}$")
+
+
 class MAXLegacyStore:
-    """Simple filesystem-backed store for knowledge objects and events.
+    """Filesystem-backed deterministic store for MAX-LEGACY runtime.
 
     - knowledge objects are stored under <repo_root>/knowledge as JSON files named <id>.json
     - events are stored under <repo_root>/events as JSON files named <id>.json
 
-    If an object without an `id` is saved, the store will allocate a new one using
-    K-<NNN> for knowledge and EV-<NNNN> for events (event IDs are normally generated
-    by EventEngine, but the store can also create them).
+    ID generation is deterministic: the next numeric suffix is derived from
+    existing files using a stable numeric parse (max(existing)+1).
+    Knowledge IDs use 3 digits (K-###). Event IDs use 4 digits (EV-####).
     """
 
     def __init__(self, root: Optional[Path] = None) -> None:
-        # Determine repository root relative to this file if not provided
         if root is None:
             root = Path(__file__).resolve().parents[1]
-        self.root = root
+        self.root: Path = Path(root)
         self.knowledge_dir = self.root / "knowledge"
         self.events_dir = self.root / "events"
         self.knowledge_dir.mkdir(parents=True, exist_ok=True)
@@ -29,7 +33,7 @@ class MAXLegacyStore:
     # ---- knowledge API ----
     def _next_knowledge_id(self) -> str:
         existing = [p.stem for p in self.knowledge_dir.glob("*.json") if p.is_file()]
-        nums = []
+        nums: List[int] = []
         for name in existing:
             if name.startswith("K-"):
                 try:
@@ -41,13 +45,21 @@ class MAXLegacyStore:
 
     def save_knowledge(self, obj: Dict[str, Any]) -> str:
         obj = dict(obj)
-        obj_id = obj.get("id") or self._next_knowledge_id()
+        provided_id = obj.get("id")
+        if provided_id is not None:
+            if not isinstance(provided_id, str) or not K_PATTERN.match(provided_id):
+                raise ValueError("knowledge id must match format K-XXX (e.g. K-001)")
+            obj_id = provided_id
+        else:
+            obj_id = self._next_knowledge_id()
         obj["id"] = obj_id
         path = self.knowledge_dir / f"{obj_id}.json"
         path.write_text(json.dumps(obj, ensure_ascii=False, indent=2), encoding="utf-8")
         return obj_id
 
     def load_knowledge(self, obj_id: str) -> Dict[str, Any]:
+        if not isinstance(obj_id, str) or not K_PATTERN.match(obj_id):
+            raise ValueError("invalid knowledge id format")
         path = self.knowledge_dir / f"{obj_id}.json"
         if not path.exists():
             raise FileNotFoundError(f"Knowledge object {obj_id} not found")
@@ -85,7 +97,7 @@ class MAXLegacyStore:
     # ---- events API ----
     def _next_event_id(self) -> str:
         existing = [p.stem for p in self.events_dir.glob("*.json") if p.is_file()]
-        nums = []
+        nums: List[int] = []
         for name in existing:
             if name.startswith("EV-"):
                 try:
@@ -97,13 +109,21 @@ class MAXLegacyStore:
 
     def save_event(self, event: Dict[str, Any]) -> str:
         event = dict(event)
-        event_id = event.get("id") or self._next_event_id()
+        provided_id = event.get("id")
+        if provided_id is not None:
+            if not isinstance(provided_id, str) or not EV_PATTERN.match(provided_id):
+                raise ValueError("event id must match format EV-XXXX (e.g. EV-0001)")
+            event_id = provided_id
+        else:
+            event_id = self._next_event_id()
         event["id"] = event_id
         path = self.events_dir / f"{event_id}.json"
         path.write_text(json.dumps(event, ensure_ascii=False, indent=2), encoding="utf-8")
         return event_id
 
     def load_event(self, event_id: str) -> Dict[str, Any]:
+        if not isinstance(event_id, str) or not EV_PATTERN.match(event_id):
+            raise ValueError("invalid event id format")
         path = self.events_dir / f"{event_id}.json"
         if not path.exists():
             raise FileNotFoundError(f"Event {event_id} not found")

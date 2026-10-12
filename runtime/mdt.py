@@ -2,22 +2,21 @@ import os
 import json
 import uuid
 from datetime import datetime
+from typing import Any, Dict, List
 
 
 class MDTRuntime:
-    """MDT runtime integrated with an EventEngine-like interface.
+    """MAX Domain Tracker (MDT) for Runtime v1.0
 
-    Responsibilities:
-    - Validate events before persisting (basic shape checks)
-    - Persist events, changes, promotions, domain updates
-    - Expose timeline and history queries
+    Tracks changes, events, promotions, and domain updates.
+    Persists state to runtime/_mdt_store.json for integration and tests.
     """
 
-    def __init__(self, storage_path=None):
+    def __init__(self, storage_path: str | None = None):
         if storage_path is None:
             storage_path = os.path.join("runtime", "_mdt_store.json")
         self.storage_path = storage_path
-        self._data = {
+        self._data: Dict[str, Any] = {
             "events": [],
             "changes": [],
             "promotions": [],
@@ -27,7 +26,7 @@ class MDTRuntime:
         }
         self._load()
 
-    def _load(self):
+    def _load(self) -> None:
         try:
             with open(self.storage_path, "r", encoding="utf-8") as f:
                 self._data = json.load(f)
@@ -37,29 +36,20 @@ class MDTRuntime:
                 os.makedirs(d, exist_ok=True)
             self._save()
 
-    def _save(self):
+    def _save(self) -> None:
         with open(self.storage_path, "w", encoding="utf-8") as f:
             json.dump(self._data, f, indent=2, default=str)
 
-    def _now(self):
+    def _now(self) -> str:
         return datetime.utcnow().isoformat() + "Z"
 
-    def _validate_event(self, event: dict) -> None:
-        # Basic validation: must have type and data
-        if not isinstance(event, dict):
-            raise ValueError("event must be a dict")
-        if "type" not in event:
-            raise ValueError("event missing type")
-        if "data" not in event:
-            raise ValueError("event missing data")
-
-    def _register_in_timeline(self, entity_id, record):
+    def _register_in_timeline(self, entity_id: str | None, record: Dict[str, Any]) -> None:
         if not entity_id:
             return
         tl = self._data["timeline_by_entity"].setdefault(entity_id, [])
         tl.append(record)
 
-    def record_change(self, change: dict) -> str:
+    def record_change(self, change: Dict[str, Any]) -> str:
         change = dict(change)
         change.setdefault("id", f"CHG-{uuid.uuid4().hex[:8]}")
         change.setdefault("timestamp", self._now())
@@ -72,28 +62,29 @@ class MDTRuntime:
         self._save()
         return change["id"]
 
-    def record_event(self, event: dict) -> str:
-        """Record an event after validation."""
-        self._validate_event(event)
-        event = dict(event)
+    def record_event(self, event: Dict[str, Any]) -> str:
+        # Basic validation here: event must have id and type
+        if not isinstance(event, dict):
+            raise ValueError("event must be a dict")
+        if "type" not in event:
+            raise ValueError("event missing type")
         if "id" not in event:
-            event["id"] = f"EV-{uuid.uuid4().hex[:8]}"
+            raise ValueError("event must include id before MDT record")
+        event = dict(event)
         event.setdefault("timestamp", self._now())
         self._data["events"].append(event)
-        # timeline
-        entity_id = event.get("entity_id") or (event.get("data") or {}).get("id")
+        entity_id = event.get("entity_id") or (event.get("payload") or {}).get("id") or (event.get("data") or {}).get("id")
         self._register_in_timeline(entity_id, {"type": "event", "id": event["id"], "event": event})
-        domain = event.get("domain") or (event.get("data") or {}).get("domain")
+        domain = event.get("domain") or (event.get("payload") or {}).get("domain") or (event.get("data") or {}).get("domain")
         if domain:
             self._data["domain_history"].setdefault(domain, []).append(event)
         self._save()
         return event["id"]
 
-    def record_promotion(self, promotion: dict) -> str:
+    def record_promotion(self, promotion: Dict[str, Any]) -> str:
         promotion = dict(promotion)
         promotion.setdefault("id", f"PROM-{uuid.uuid4().hex[:8]}")
         promotion.setdefault("timestamp", self._now())
-        # basic validation
         if "entity_id" not in promotion:
             raise ValueError("promotion must reference entity_id")
         self._data["promotions"].append(promotion)
@@ -102,7 +93,7 @@ class MDTRuntime:
         self._save()
         return promotion["id"]
 
-    def record_domain_update(self, update: dict) -> str:
+    def record_domain_update(self, update: Dict[str, Any]) -> str:
         update = dict(update)
         update.setdefault("id", f"DUP-{uuid.uuid4().hex[:8]}")
         update.setdefault("timestamp", self._now())
@@ -113,22 +104,22 @@ class MDTRuntime:
         self._save()
         return update["id"]
 
-    def get_timeline(self, entity_id: str) -> list:
+    def get_timeline(self, entity_id: str) -> List[Dict[str, Any]]:
         return list(self._data["timeline_by_entity"].get(entity_id, []))
 
-    def get_entity_history(self, entity_id: str) -> list:
-        items = []
-        for e in self._data["events"]:
-            if e.get("entity_id") == entity_id or (e.get("data") or {}).get("id") == entity_id:
+    def get_entity_history(self, entity_id: str) -> List[Dict[str, Any]]:
+        items: List[Dict[str, Any]] = []
+        for e in self._data.get("events", []):
+            if e.get("entity_id") == entity_id or (e.get("payload") or {}).get("id") == entity_id or (e.get("data") or {}).get("id") == entity_id:
                 items.append(e)
-        for c in self._data["changes"]:
+        for c in self._data.get("changes", []):
             if c.get("entity_id") == entity_id:
                 items.append(c)
-        for p in self._data["promotions"]:
+        for p in self._data.get("promotions", []):
             if p.get("entity_id") == entity_id:
                 items.append(p)
         items.sort(key=lambda x: x.get("timestamp", ""))
         return items
 
-    def get_domain_history(self, domain: str) -> list:
+    def get_domain_history(self, domain: str) -> List[Dict[str, Any]]:
         return list(self._data["domain_history"].get(domain, []))

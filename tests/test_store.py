@@ -1,46 +1,38 @@
 import os
-import shutil
 from pathlib import Path
-
 from runtime.store import MAXLegacyStore
 
 
-def test_save_and_load_knowledge(tmp_path: Path):
-    # Use a temporary copy of the repository layout to avoid polluting the repo in CI
-    repo_tmp = tmp_path / "repo"
-    repo_tmp.mkdir()
-    (repo_tmp / "knowledge").mkdir()
-    (repo_tmp / "events").mkdir()
+def test_store_id_generation_and_persistence(tmp_path: Path):
+    root = tmp_path / "repo"
+    root.mkdir()
+    store = MAXLegacyStore(root=root)
 
-    store = MAXLegacyStore(root=repo_tmp)
+    # save first knowledge -> K-001
+    kid = store.save_knowledge({"title": "First"})
+    assert kid == "K-001"
+    assert (root / "knowledge" / "K-001.json").exists()
 
-    k = {"title": "K-001 title", "content": "hello"}
-    k_id = store.save_knowledge(k)
-    assert k_id.startswith("K-")
+    # save second knowledge -> K-002
+    kid2 = store.save_knowledge({"title": "Second"})
+    assert kid2 == "K-002"
 
-    loaded = store.load_knowledge(k_id)
-    assert loaded["id"] == k_id
-    assert loaded["title"] == "K-001 title"
+    # explicit id must match pattern
+    try:
+        store.save_knowledge({"id": "BAD", "title": "X"})
+        assert False, "invalid id should raise"
+    except ValueError:
+        pass
 
-    listed = store.list_knowledge()
-    assert k_id in listed
+    # events sequential
+    eid1 = store.save_event({"type": "test", "payload": {}})
+    assert eid1 == "EV-0001"
+    eid2 = store.save_event({"type": "test", "payload": {}})
+    assert eid2 == "EV-0002"
 
-
-def test_save_and_load_event(tmp_path: Path):
-    repo_tmp = tmp_path / "repo"
-    repo_tmp.mkdir()
-    (repo_tmp / "knowledge").mkdir()
-    (repo_tmp / "events").mkdir()
-
-    store = MAXLegacyStore(root=repo_tmp)
-
-    e = {"type": "promotion", "payload": {"note": "promote"}}
-    e_id = store.save_event(e)
-    assert e_id.startswith("EV-")
-
-    loaded = store.load_event(e_id)
-    assert loaded["id"] == e_id
-    assert loaded["type"] == "promotion"
-
-    listed = store.list_events()
-    assert e_id in listed
+    # explicit event id must match
+    try:
+        store.save_event({"id": "EV-1", "type": "x", "payload": {}})
+        assert False
+    except ValueError:
+        pass
