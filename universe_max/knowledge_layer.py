@@ -1,28 +1,22 @@
+"""Knowledge layer for Universe-Max.
+
+Encapsulates knowledge-loading helpers. Uses existing store APIs; no new
+storage layers introduced.
+"""
 from __future__ import annotations
 
-from typing import Dict, Any, List
-from runtime.store import MAXLegacyStore
-from runtime.event_engine import EventEngine
-from runtime.mdt import MDTRuntime
+from typing import Optional, Iterable, Dict, Any
 
 
-class KnowledgeLayer:
-    """Proxy to MAXLegacyStore that also emits events and records MDT traces.
+def load_knowledge(store, obj_id: str) -> Optional[Dict[str, Any]]:
+    try:
+        return store.load_knowledge(obj_id)
+    except Exception:
+        return None
 
-    This ensures there is a single canonical store and an event path for all
-    knowledge operations.
-    """
 
-    def __init__(self, root: Optional[str] = None):
-        self.store = MAXLegacyStore(root=root)
-        self.engine = EventEngine(store=self.store)
-        self.mdt = MDTRuntime()
-
-    def create_knowledge(self, obj: Dict[str, Any]) -> str:
-        kid = self.store.save_knowledge(obj)
-        ev = self.engine.emit_event("knowledge.create", {"id": kid, **obj})
-        self.mdt.record_event(ev)
-        return kid
-
-    def list_objects(self) -> List[str]:
-        return self.store.list_knowledge()
+def list_knowledge(store) -> Iterable[str]:
+    try:
+        return list(store.list_knowledge())
+    except Exception:
+        return []

@@ -1,16 +1,19 @@
+"""Reality evaluation layer for Universe-Max.
+
+Uses ICV alignment and the store to produce a reality-evaluation result.
+"""
 from __future__ import annotations
 
-from runtime.reality_views import RealityViews
+from typing import Any, Dict
 
 
-class RealityLayer:
-    """Facade over RealityViews and MAX-REALITY artifacts."""
-
-    def __init__(self, root: Optional[str] = None):
-        self.reality = RealityViews(root=root)
-
-    def object_alignment(self, obj_id: str):
-        return self.reality.object_alignment(obj_id)
-
-    def district_alignment(self, district_id: str):
-        return self.reality.district_alignment(district_id)
+def evaluate_reality(icv, obj_id: str) -> Dict[str, Any]:
+    out: Dict[str, Any] = {}
+    try:
+        a = icv.alignment(obj_id)
+        out["alignment"] = a
+        # also include analysis fallback
+        out["analysis"] = icv.analyze(obj_id)
+    except Exception as e:
+        out["error"] = str(e)
+    return out

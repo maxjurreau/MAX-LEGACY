@@ -1,13 +1,18 @@
+"""Render layer for Universe-Max.
+
+Simple view rendering utilities that produce JSON-friendly views. These are
+intended as lightweight adapters to the existing rendering/runtime views.
+"""
 from __future__ import annotations
 
 from typing import Any, Dict
 
 
-class RenderLayer:
-    """Prepare runtime artifacts for rendering (UI-friendly shapes)."""
-
-    def __init__(self, root: Optional[str] = None):
-        pass
-
-    def render_knowledge_card(self, summary: Dict[str, Any]) -> Dict[str, Any]:
-        return {"card": {"title": summary.get("title"), "id": summary.get("id"), "meta": {"domain": summary.get("domain")}}}
+def render_view(icv, obj_id: str) -> Dict[str, Any]:
+    try:
+        know = icv.knowledge(obj_id)
+        analysis = icv.analyze(obj_id)
+        alignment = icv.alignment(obj_id)
+        return {"id": obj_id, "title": know.get("title") if know else None, "analysis": analysis, "alignment": alignment}
+    except Exception as e:
+        return {"id": obj_id, "error": str(e)}

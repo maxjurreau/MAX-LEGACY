@@ -1,26 +1,23 @@
+"""Simulation layer for Universe-Max.
+
+Runs domain simulations using the ICV runtime. Simulation is a best-effort
+orchestration of existing ICV analysis and recommendation logic.
+"""
 from __future__ import annotations
 
-from typing import Dict, Any, Optional
-from runtime.event_engine import EventEngine
-from runtime.store import MAXLegacyStore
-from runtime.mdt import MDTRuntime
+from typing import Any, Dict
 
 
-class SimulationLayer:
-    """Run lightweight deterministic simulations that emit events through EventEngine.
-
-    Simulations are not autonomous agents; they are deterministic runners that
-    use the existing EventEngine and MDT for persistence and tracking.
-    """
-
-    def __init__(self, root: Optional[str] = None):
-        self.store = MAXLegacyStore(root=root)
-        self.engine = EventEngine(store=self.store)
-        self.mdt = MDTRuntime()
-
-    def run_simulation(self, sim_id: str, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        # produce a synthetic event and record it via MDT
-        payload = {"sim_id": sim_id, "inputs": inputs}
-        ev = self.engine.emit_event("simulation", payload)
-        self.mdt.record_event(ev)
-        return ev
+def run_simulation(icv, obj_id: str) -> Dict[str, Any]:
+    # delegate to icv.analyze and icv.recommendation
+    out: Dict[str, Any] = {}
+    try:
+        analysis = icv.analyze(obj_id)
+        out["analysis"] = analysis
+        try:
+            out["recommendation"] = icv.recommendation(obj_id)
+        except Exception:
+            out["recommendation"] = None
+    except Exception as e:
+        out["error"] = str(e)
+    return out
