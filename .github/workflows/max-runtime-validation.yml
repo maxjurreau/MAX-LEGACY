@@ -1,0 +1,203 @@
+name: MAX Ecosystem Validation Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - "feat/**"
+
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+
+  validate-runtime:
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Cache Pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+
+          if [ -f requirements-dev.txt ]; then
+            pip install -r requirements-dev.txt
+          elif [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          else
+            pip install pytest pytest-cov fastapi pydantic pyyaml httpx jsonschema
+          fi
+
+      - name: Validate Imports
+        run: |
+          python -c "import runtime.store"
+          python -c "import runtime.event_engine"
+          python -c "import runtime.mdt"
+          python -c "import runtime.qce"
+
+          python -c "import universe_max.core"
+          python -c "import universe_max.identity_layer"
+          python -c "import universe_max.knowledge_layer"
+          python -c "import universe_max.simulation_layer"
+          python -c "import universe_max.reality_layer"
+          python -c "import universe_max.render_layer"
+
+          python -c "import umbrella.umbrella_runtime"
+
+      - name: Run Validation Scripts
+        run: |
+          if [ -f scripts/validate_knowledge.py ]; then
+            python scripts/validate_knowledge.py
+          fi
+
+          if [ -f scripts/validate_promotion.py ]; then
+            python scripts/validate_promotion.py
+          fi
+
+      - name: Run Core Runtime Tests
+        run: |
+          pytest -q \
+            tests/test_store.py \
+            tests/test_event_engine.py \
+            tests/test_mdt.py \
+            tests/test_qce.py \
+            tests/test_api.py
+
+      - name: Run Universe-MAX Tests
+        run: |
+          pytest -q \
+            tests/test_universe_runtime.py \
+            tests/test_identity_layer.py \
+            tests/test_knowledge_layer.py \
+            tests/test_simulation_layer.py \
+            tests/test_reality_layer.py \
+            tests/test_render_layer.py
+
+      - name: Run Umbrella Runtime Tests
+        run: |
+          pytest -q \
+            tests/test_umbrella_runtime.py \
+            tests/test_customer_runtime.py \
+            tests/test_revenue_runtime.py
+
+      - name: Run Coverage
+        run: |
+          pytest \
+            --cov=. \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml
+
+      - name: Upload Coverage Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.xml
+
+  readiness-report:
+
+    needs:
+      - validate-runtime
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Runtime Readiness Report
+        run: |
+          echo "================================="
+          echo "MAX ECOSYSTEM RUNTIME STATUS"
+          echo "================================="
+          echo "MAX-LEGACY Runtime: PASS"
+          echo "Universe-MAX Runtime: PASS"
+          echo "Umbrella Runtime: PASS"
+          echo "Customer Runtime: PASS"
+          echo "Revenue Runtime: PASS"
+          echo "================================="
+          echo "READY FOR CLOUDFLARE VALIDATION"
+          echo "================================="
+
+  deploy-cloudflare:
+
+    needs:
+      - validate-runtime
+
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+
+    runs-on: ubuntu-latest
+
+    environment:
+      name: production
+
+    steps:
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install Dependencies
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+
+      - name: Install Wrangler
+        run: |
+          npm install -g wrangler@^2
+
+      - name: Verify Wrangler
+        run: |
+          wrangler --version
+
+      - name: Validate Cloudflare Secrets
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+
+          if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
+            echo "Missing CLOUDFLARE_API_TOKEN"
+            exit 1
+          fi
+
+          if [ -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then
+            echo "Missing CLOUDFLARE_ACCOUNT_ID"
+            exit 1
+          fi
+
+          wrangler whoami || true
+
+      - name: Deploy To Cloudflare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          wrangler deploy --account-id "$CLOUDFLARE_ACCOUNT_ID"
