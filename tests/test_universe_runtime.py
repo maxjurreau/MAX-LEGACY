@@ -1,85 +1,58 @@
-"""Tests for the Universe-Max runtime.
-
-These tests verify the minimal runtime flow using an in-memory fake store and
-a fake ICV implementation. The tests avoid touching external services and
-exercise the public UniverseMax APIs.
-"""
+"""Tests for Universe-MAX runtime foundation."""
 from __future__ import annotations
 
-import pytest
+import json
+from pathlib import Path
 
-from universe_max.core import UniverseMax
-
-
-class FakeStore:
-    def __init__(self):
-        self._knowledge = {
-            "k1": {"id": "k1", "title": "Test Knowledge", "domain": "research", "alignment": {"score": 0.8}, "body": "sample"}
-        }
-        self._contexts = {}
-
-    def load_knowledge(self, obj_id: str):
-        return self._knowledge.get(obj_id)
-
-    def list_knowledge(self):
-        return list(self._knowledge.keys())
-
-    def save_context(self, key: str, value):
-        self._contexts[key] = value
-
-    def load_context(self, key: str):
-        return self._contexts.get(key)
+from universe_max.core import UniverseRuntime
+from runtime.store import MAXLegacyStore
+from runtime.mdt import MDTRuntime
+from runtime.qce import QCERuntime
+from runtime.event_engine import EventEngine
 
 
-class FakeICV:
-    def __init__(self, store=None):
-        self._store = store
+def test_universe_runtime_end_to_end(tmp_path):
+    # prepare a filesystem-backed store rooted at tmp_path
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    store = MAXLegacyStore(root=repo_root)
+    mdt = MDTRuntime(storage_path=str(repo_root / "runtime" / "_mdt_store.json"))
+    qce = QCERuntime(path=str(repo_root / "schema" / "dependencies.yaml"))
+    event_engine = EventEngine(store=store)
 
-    def analyze(self, obj_id: str):
-        obj = self._store.load_knowledge(obj_id)
-        return {"id": obj_id, "score": 0.75, "meta": {"title": obj.get("title")}} if obj else None
+    ur = UniverseRuntime(store=store, mdt=mdt, qce=qce, event_engine=event_engine)
 
-    def alignment(self, obj_id: str):
-        obj = self._store.load_knowledge(obj_id)
-        return obj.get("alignment") if obj else None
+    # Load a district
+    district = {"name": "Research District Alpha"}
+    did = ur.load_district(district)
+    assert did in ur.context["districts"]
 
-    def knowledge(self, obj_id: str):
-        return self._store.load_knowledge(obj_id)
+    # Load an ICV
+    icv = {"name": "Test ICV", "value": 2}
+    iid = ur.load_icv(icv)
+    assert iid in ur.context["icvs"]
 
-    def recommendation(self, obj_id: str):
-        return {"id": obj_id, "action": "promote"}
+    # Load knowledge about the icv
+    kobj = {"type": "evidence", "payload": {"icv_id": iid, "note": "seed evidence"}}
+    kid = ur.load_knowledge(kobj)
+    assert kid.startswith("K-")
 
+    # Run simulation
+    sim = ur.run_simulation(did, [iid], steps=2)
+    assert sim["summary"]["steps"] == 2
 
-class DummyManager:
-    def __init__(self, store):
-        self.store = store
+    # Evaluate reality
+    report = ur.evaluate_reality(sim)
+    assert isinstance(report, dict)
+    assert report["icv_count"] == 1
 
-    def instantiate(self, name: str):
-        return FakeICV(store=self.store)
+    # Render view
+    view = ur.render_view(simulation_result=sim, evaluation=report)
+    assert "Universe-MAX Runtime View" in view
 
-
-def test_universe_runtime_flow():
-    store = FakeStore()
-    um = UniverseMax(store=store, icv_manager=DummyManager(store))
-
-    # load knowledge
-    k = um.load_knowledge("k1")
-    assert k and k.get("title") == "Test Knowledge"
-
-    # load icv and run simulation
-    icv = um.load_icv("research")
-    sim = um.run_simulation(icv, "k1")
-    assert "simulation" in sim and sim["simulation"].get("score") == 0.75
-
-    # evaluate reality
-    reality = um.evaluate_reality(icv, "k1")
-    assert "reality_evaluation" in reality
-    assert reality["reality_evaluation"]["alignment_score"] == 0.8
-
-    # render view
-    view = um.render_view(icv, "k1")
-    assert "view" in view and view["view"].get("title") == "Test Knowledge"
-
-    # context save/restore
-    assert um.save_context("x", {"v": 1}) is True
-    assert um.restore_context("x") == {"v": 1}
+    # Save and restore context
+    p = ur.save_context()
+    assert Path(p).exists()
+    ur2 = UniverseRuntime(store=store, mdt=mdt, qce=qce, event_engine=event_engine)
+    ur2.restore_context(p)
+    assert ur2.context.get("last_simulation") is not None
