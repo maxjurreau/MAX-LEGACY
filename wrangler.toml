@@ -1,13 +1,10 @@
 # Minimal wrangler.toml skeleton for Cloudflare deployment.
 # Configure these bindings to match your Cloudflare account.
-name = "max-legacy-runtime"
+name = "max-legacy"
 main = "workers/api_worker.py"
 compatibility_date = "2026-10-15"
 # Enable Python Workers runtime
 compatibility_flags = ["python_workers"]
-# type field depends on runtime you choose. For a Python runtime, set the appropriate type.
-# If you're using the JavaScript worker runtime replace main and type accordingly.
-type = "python"
 
 # Environment variables (set values in Cloudflare dashboard or secrets)
 [vars]
@@ -18,13 +15,11 @@ EVENT_QUEUE = "__EVENT_QUEUE__"
 
 # Durable Objects / Queues / D1 bindings placeholders (set in dashboard)
 # D1 binding (name must match your Cloudflare D1 database)
-# Use the newer top-level array format expected by wrangler
 d1_databases = [
   { binding = "D1_DB", database_name = "max_legacy_db" }
 ]
 
 # R2 binding example (name must match binding in dashboard)
-# Use top-level array format instead of a [r2_buckets] table
 r2_buckets = [
   { binding = "R2_STORAGE", bucket_name = "max-legacy-r2" }
 ]
