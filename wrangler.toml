@@ -3,6 +3,8 @@
 name = "max-legacy-runtime"
 main = "workers/api_worker.py"
 compatibility_date = "2026-10-15"
+# Enable Python Workers runtime
+compatibility_flags = ["python_workers"]
 # type field depends on runtime you choose. For a Python runtime, set the appropriate type.
 # If you're using the JavaScript worker runtime replace main and type accordingly.
 type = "python"
