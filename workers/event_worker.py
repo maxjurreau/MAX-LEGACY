@@ -7,17 +7,19 @@ This script is intentionally minimal — it demonstrates flow and retries.
 import os
 import time
 import json
-from ..queues.event_queue import EventQueue
-from ..queues.mdt_queue import MDTQueue
-from ..queues.qce_queue import QCEQueue
-from ..telemetry.logging import get_logger
-from ..r2.storage_adapter import R2StorageAdapter
+
+from queues.event_queue import EventQueue
+from queues.mdt_queue import MDTQueue
+from queues.qce_queue import QCEQueue
+from telemetry.logging import get_logger
+from r2.storage_adapter import R2StorageAdapter
 
 logger = get_logger("event_worker")
 EVENT_QUEUE = EventQueue(binding_name=os.getenv("EVENT_QUEUE", "EVENT_QUEUE"))
 MDT_QUEUE = MDTQueue()
 QCE_QUEUE = QCEQueue()
 R2 = R2StorageAdapter(bucket_name=os.getenv("R2_BUCKET", "max-legacy-r2"))
+
 
 def process_event(event):
     logger.info("processing_event", extra={"event": event})
@@ -31,6 +33,7 @@ def process_event(event):
     # 4. Acknowledge or emit follow-up events as needed
     logger.info("event_processed", extra={"key": key})
 
+
 def run_once():
     item = EVENT_QUEUE.dequeue(timeout=1.0)
     if not item:
@@ -39,8 +42,8 @@ def run_once():
         process_event(item)
     except Exception as e:
         logger.exception("failed_processing_event", exc_info=e)
-        # Optionally re-enqueue or route to dead-letter
     return True
+
 
 def run_forever():
     logger.info("event_worker_started")
@@ -48,6 +51,7 @@ def run_forever():
         processed = run_once()
         if not processed:
             time.sleep(0.5)
+
 
 if __name__ == "__main__":
     run_forever()
