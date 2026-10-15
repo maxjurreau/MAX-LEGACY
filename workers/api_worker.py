@@ -7,36 +7,37 @@ Keep logic here minimal; push heavy work to workers/event_worker.py and queues.
 import os
 import json
 from typing import Dict, Any
-from http.server import BaseHTTPRequestHandler
-from urllib.parse import urlparse, parse_qs
 
 # Lightweight HTTP handler for Cloudflare Python runtime:
 # Cloudflare's Python worker environment exposes an HTTP handler differently depending on runtime.
 # This file is a minimal WSGI-like style so it can be adapted to the Cloudflare Python worker entrypoint.
 # For local development, use `uvicorn` + FastAPI/Starlette and map these handlers.
 
+
 def _json_response(status: int, body: Dict[str, Any]):
     return ("application/json", status, json.dumps(body).encode("utf-8"))
 
+
 # Simple in-process adapters (to be swapped for cloud bindings)
-# Use absolute imports so modules work when packaged as top-level modules in Wrangler
+# Use absolute imports so modules resolve correctly when the worker is packaged as a top-level module.
 from r2.storage_adapter import R2StorageAdapter
 from queues.event_queue import EventQueue
-# D1 adapter would be added similarly
 
 R2 = R2StorageAdapter(bucket_name=os.getenv("R2_BUCKET", "max-legacy-r2"))
 EVENT_QUEUE = EventQueue(binding_name=os.getenv("EVENT_QUEUE", "EVENT_QUEUE"))
+
 
 def handle_health(environ, start_response):
     content_type, status, payload = _json_response(200, {"status": "ok", "service": "MAX-LEGACY Cloudflare Runtime"})
     start_response(f"{status} OK", [("Content-Type", content_type)])
     return [payload]
 
+
 def handle_knowledge(environ, start_response):
-    # Example: list knowledge objects from R2 (prefix: knowledge/)
     items = R2.list_objects(prefix="knowledge/")
     start_response("200 OK", [("Content-Type", "application/json")])
     return [json.dumps({"count": len(items), "items": items}).encode()]
+
 
 def handle_events(environ, start_response):
     try:
@@ -45,37 +46,41 @@ def handle_events(environ, start_response):
         data = json.loads(body.decode() or "{}")
     except Exception:
         data = {}
-    # Enqueue event for processing
     EVENT_QUEUE.enqueue(data)
     start_response("202 Accepted", [("Content-Type", "application/json")])
     return [json.dumps({"enqueued": True}).encode()]
 
+
 def handle_customers(environ, start_response):
-    # Example stub: return empty list — actual should query D1
     start_response("200 OK", [("Content-Type", "application/json")])
     return [json.dumps({"customers": []}).encode()]
+
 
 def handle_projects(environ, start_response):
     start_response("200 OK", [("Content-Type", "application/json")])
     return [json.dumps({"projects": []}).encode()]
 
+
 def handle_revenue(environ, start_response):
     start_response("200 OK", [("Content-Type", "application/json")])
     return [json.dumps({"revenue": []}).encode()]
+
 
 def handle_capabilities(environ, start_response):
     start_response("200 OK", [("Content-Type", "application/json")])
     return [json.dumps({"capabilities": []}).encode()]
 
+
 def handle_simulations(environ, start_response):
     start_response("200 OK", [("Content-Type", "application/json")])
     return [json.dumps({"simulations": []}).encode()]
+
 
 def handle_reality(environ, start_response):
     start_response("200 OK", [("Content-Type", "application/json")])
     return [json.dumps({"reality": []}).encode()]
 
-# Simple router for WSGI-compatible environment
+
 def app(environ, start_response):
     path = environ.get("PATH_INFO", "/")
     method = environ.get("REQUEST_METHOD", "GET").upper()
