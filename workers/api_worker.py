@@ -19,8 +19,9 @@ def _json_response(status: int, body: Dict[str, Any]):
     return ("application/json", status, json.dumps(body).encode("utf-8"))
 
 # Simple in-process adapters (to be swapped for cloud bindings)
-from ..r2.storage_adapter import R2StorageAdapter
-from ..queues.event_queue import EventQueue
+# Use absolute imports so modules work when packaged as top-level modules in Wrangler
+from r2.storage_adapter import R2StorageAdapter
+from queues.event_queue import EventQueue
 # D1 adapter would be added similarly
 
 R2 = R2StorageAdapter(bucket_name=os.getenv("R2_BUCKET", "max-legacy-r2"))
