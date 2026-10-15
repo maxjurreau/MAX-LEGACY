@@ -18,22 +18,21 @@ EVENT_QUEUE = "__EVENT_QUEUE__"
 
 # Durable Objects / Queues / D1 bindings placeholders (set in dashboard)
 # D1 binding (name must match your Cloudflare D1 database)
-[d1]
-bindings = [
-  { name = "D1_DB", database_name = "max_legacy_db" }
+# Use the newer top-level array format expected by wrangler
+d1_databases = [
+  { binding = "D1_DB", database_name = "max_legacy_db" }
 ]
 
 # R2 binding example (name must match binding in dashboard)
-[r2_buckets]
-bindings = [
+# Use top-level array format instead of a [r2_buckets] table
+r2_buckets = [
   { binding = "R2_STORAGE", bucket_name = "max-legacy-r2" }
 ]
 
 # Queues (Cloudflare Queues binding placeholders)
-[queues]
-bindings = [
-  { name = "EVENT_QUEUE" },
-  { name = "TASK_QUEUE" }
+queues = [
+  { binding = "EVENT_QUEUE" },
+  { binding = "TASK_QUEUE" }
 ]
 
 # Triggers for scheduled worker (cron)
